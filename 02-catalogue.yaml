@@ -18,6 +18,7 @@
      name: roboshop
      system: yes
      shell: /sbin/nologin
+     home: /app
 
   - name: Create /app directory
     ansible.builtin.file:
