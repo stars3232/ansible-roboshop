@@ -1,0 +1,78 @@
+- name: Configure user component
+  hosts: user
+  become: yes
+  tasks:
+  - name: Disable nodejs
+    ansible.builtin.command: dnf module disable nodejs -y
+
+  - name: Enable nodejs:20
+    ansible.builtin.command: dnf module enable nodejs -y
+
+  - name: Install nodejs
+    ansible.builtin.package:
+     name: nodejs
+     state: present
+
+  - name: Create /app directory
+    ansible.builtin.file:
+     path: /app
+     state: directory
+
+  - name: Create roboshop user
+    ansible.builtin.user:
+     name: roboshop
+     system: yes
+     shell: /sbin/nologin
+
+  - name: Download user zip file
+    ansible.builtin.get_url:
+     url: https://roboshop-artifacts.s3.amazonaws.com/user-v3.zip
+     dest: /tmp/user.zip
+
+  - name: Unzip user
+    ansible.builtin.unarchive:
+     src: /tmp/user.zip
+     dest: /app
+     remote_src: yes
+
+  - name: Download dependencies
+    ansible.builtin.command: npm install
+    args:
+     chdir: /app
+
+  - name: Setup systemd service
+    ansible.builtin.copy:
+      src: user.service
+      dest: /etc/systemd/system/user.service
+
+  - name: Reload systemd daemon
+    ansible.builtin.systemd_service:
+     daemon_reload: yes
+
+  - name: Start & Enable user
+    ansible.builtin.service:
+     name: user
+     state: started
+     enabled: yes
+
+  - name: Copy mongo.repo file
+    ansible.builtin.copy:
+     src: mongo.repo
+     dest: /etc/yum.repos.d/mongo.repo
+
+  - name: Install mongodb client
+    ansible.builtin.package:
+     name: mongodb-mongosh
+     state: present
+
+  - name: check products loaded or not
+    ansible.builtin.command: mongosh --host mongodb.sivarobots.shop --eval 'db.getMongo().getDBNames().indexOf("catalogue")'
+    register: catalogue_output
+
+  - name: print catalogue output
+    ansible.builtin.debug:
+      msg: "{{ catalogue_output }}"
+
+  - name: load products
+    ansible.builtin.shell: mongosh --host mongodb.sivarobots.shop < /app/db/master-data.js
+    when: catalogue_output.stdout | int < 0
